@@ -146,26 +146,57 @@ def create_flying_polyline(arrows, arrow_index):
     return {
         "arrow": arrow,
         "direction": get_polyline_direction(arrow["path"]),
-        "offset_x": 0.0,
-        "offset_y": 0.0,
+        "distance": 0.0,
     }
 
 
-def update_flying_polyline(flying_arrow, delta_time, rows, cols):
-    """移动整条折线，完全越过坐标区域后结束动画。"""
-    if flying_arrow is None:
-        return None
-
-    dr, dc = flying_arrow["direction"]
-    flying_arrow["offset_x"] += dc * FLIGHT_SPEED * delta_time
-    flying_arrow["offset_y"] += dr * FLIGHT_SPEED * delta_time
-
+def get_flying_polyline_points(flying_arrow, rows, cols):
+    """尾部沿原折线前进，头部沿末段延伸，保持箭头总长度。"""
     points = [
         polyline_point_to_screen(point, rows, cols)
         for point in flying_arrow["arrow"]["path"]
     ]
-    xs = [point[0] + flying_arrow["offset_x"] for point in points]
-    ys = [point[1] + flying_arrow["offset_y"] for point in points]
+    distance = flying_arrow["distance"]
+    dr, dc = flying_arrow["direction"]
+    head_x, head_y = points[-1]
+    if distance <= 0:
+        return points
+
+    # 从尾部依次消耗线段；尚未经过的拐点留在原位置。
+    remaining = distance
+    for index, (start, end) in enumerate(zip(points, points[1:])):
+        length = abs(end[0] - start[0]) + abs(end[1] - start[1])
+        if length == 0:
+            continue
+        if remaining < length:
+            ratio = remaining / length
+            tail = (
+                start[0] + (end[0] - start[0]) * ratio,
+                start[1] + (end[1] - start[1]) * ratio,
+            )
+            return [tail] + points[index + 1:] + [
+                (head_x + dc * distance, head_y + dr * distance)
+            ]
+        remaining -= length
+
+    # 尾部也走过最后一个拐点后，整条线进入头部的出射直线。
+    return [
+        (head_x + dc * remaining, head_y + dr * remaining),
+        (head_x + dc * distance, head_y + dr * distance),
+    ]
+
+
+def update_flying_polyline(flying_arrow, delta_time, rows, cols):
+    """沿折线轨迹推进，尾部越过边界后结束动画。"""
+    if flying_arrow is None:
+        return None
+
+    dr, dc = flying_arrow["direction"]
+    flying_arrow["distance"] += FLIGHT_SPEED * delta_time
+
+    points = get_flying_polyline_points(flying_arrow, rows, cols)
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
     left, top, spacing = get_polyline_layout(rows, cols)
     right = left + (cols - 1) * spacing
     bottom = top + (rows - 1) * spacing

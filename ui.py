@@ -5,6 +5,7 @@ import math
 import pygame
 
 from game_logic import (
+    get_flying_polyline_points,
     get_board_layout,
     get_polyline_direction,
     get_polyline_layout,
@@ -165,24 +166,22 @@ def draw_board(screen, board, blocked_cell, blocked_until):
 
 
 def draw_polyline_arrow(
-    screen, arrow, rows, cols, color=None, offset=(0, 0)
+    screen, arrow, rows, cols, color=None, offset=(0, 0), screen_points=None
 ):
     """绘制一条经过多个坐标点的折线箭头。"""
     line_color = color or arrow["color"]
-    points = []
-    for point in arrow["path"]:
-        x, y = polyline_point_to_screen(point, rows, cols)
-        points.append((x + offset[0], y + offset[1]))
-
-    pygame.draw.lines(screen, line_color, False, points, 8)
-    for point in points[:-1]:
-        pygame.draw.circle(screen, line_color, point, 4)
+    points = screen_points
+    if points is None:
+        points = []
+        for point in arrow["path"]:
+            x, y = polyline_point_to_screen(point, rows, cols)
+            points.append((x + offset[0], y + offset[1]))
 
     dr, dc = get_polyline_direction(arrow["path"])
     dx, dy = dc, dr
     tip = points[-1]
-    head_length = 17
-    head_width = 11
+    head_length = 12
+    head_width = 7
     perpendicular_x, perpendicular_y = -dy, dx
     base_x = tip[0] - dx * head_length
     base_y = tip[1] - dy * head_length
@@ -194,7 +193,46 @@ def draw_polyline_arrow(
         base_x - perpendicular_x * head_width,
         base_y - perpendicular_y * head_width,
     )
-    pygame.draw.polygon(screen, line_color, [tip, left, right])
+    # 在局部透明画布上以3倍分辨率绘制，再缩小以平滑轮廓。
+    scale = 3
+    padding = 12
+    origin_x = math.floor(min(p[0] for p in points)) - padding
+    origin_y = math.floor(min(p[1] for p in points)) - padding
+    width = math.ceil(max(p[0] for p in points)) - origin_x + padding
+    height = math.ceil(max(p[1] for p in points)) - origin_y + padding
+    layer = pygame.Surface((width * scale, height * scale), pygame.SRCALPHA)
+
+    def local(point):
+        return (
+            round((point[0] - origin_x) * scale),
+            round((point[1] - origin_y) * scale),
+        )
+
+    # 用小段二次曲线连接转角，保留原坐标点作为点击与路径判定依据。
+    smooth_points = [points[0]]
+    for previous, corner, following in zip(points, points[1:], points[2:]):
+        before = math.dist(previous, corner)
+        after = math.dist(corner, following)
+        if before == 0 or after == 0:
+            continue
+        radius = min(6, before / 2, after / 2)
+        entry = tuple(corner[i] + (previous[i] - corner[i]) * radius / before for i in (0, 1))
+        leave = tuple(corner[i] + (following[i] - corner[i]) * radius / after for i in (0, 1))
+        smooth_points.append(entry)
+        for step in range(1, 9):
+            t = step / 8
+            smooth_points.append(tuple(
+                (1 - t) ** 2 * entry[i] + 2 * (1 - t) * t * corner[i] + t ** 2 * leave[i]
+                for i in (0, 1)
+            ))
+    # 线杆在箭头内部结束，避免粗线从三角尖端露出。
+    smooth_points.append((tip[0] - dx * 4, tip[1] - dy * 4))
+    pixels = [local(point) for point in smooth_points]
+    pygame.draw.lines(layer, line_color, False, pixels, 5 * scale)
+    for point in pixels:
+        pygame.draw.circle(layer, line_color, point, 7)
+    pygame.draw.polygon(layer, line_color, [local(tip), local(left), local(right)])
+    screen.blit(pygame.transform.smoothscale(layer, (width, height)), (origin_x, origin_y))
 
 
 def draw_polyline_board(
@@ -211,7 +249,7 @@ def draw_polyline_board(
     for row in range(rows):
         for col in range(cols):
             point = left + col * spacing, top + row * spacing
-            pygame.draw.circle(screen, (74, 86, 121), point, 3)
+            pygame.draw.circle(screen, (66, 78, 108), point, 2)
 
     for index, arrow in enumerate(arrows):
         is_blocked = (
@@ -236,7 +274,7 @@ def draw_polyline_board(
             flying_arrow["arrow"],
             rows,
             cols,
-            offset=(flying_arrow["offset_x"], flying_arrow["offset_y"]),
+            screen_points=get_flying_polyline_points(flying_arrow, rows, cols),
         )
 
 
@@ -627,10 +665,10 @@ def draw_game_screen(
         rows, cols = get_level_dimensions(level_index)
         board_left, board_top, spacing = get_polyline_layout(rows, cols)
         board_rect = pygame.Rect(
-            board_left - 25,
-            board_top - 20,
-            (cols - 1) * spacing + 50,
-            (rows - 1) * spacing + 40,
+            board_left - 32,
+            board_top - 12,
+            (cols - 1) * spacing + 64,
+            (rows - 1) * spacing + 32,
         )
         draw_panel(screen, board_rect, (39, 47, 75), 18)
         draw_polyline_board(
