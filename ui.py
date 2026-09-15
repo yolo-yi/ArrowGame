@@ -4,8 +4,19 @@ import math
 
 import pygame
 
-from game_logic import get_board_layout
-from levels import EMPTY, LEVELS
+from game_logic import (
+    get_board_layout,
+    get_polyline_direction,
+    get_polyline_layout,
+    polyline_point_to_screen,
+)
+from levels import (
+    EMPTY,
+    LEVELS,
+    get_level_arrow_count,
+    get_level_dimensions,
+    is_polyline_level,
+)
 from settings import (
     ACCENT_BLUE,
     ACCENT_YELLOW,
@@ -151,6 +162,82 @@ def draw_board(screen, board, blocked_cell, blocked_until):
                 shake_x = round(math.sin(pygame.time.get_ticks() * 0.08) * 7)
 
             draw_arrow(screen, rect.center, arrow, color, (shake_x, 0))
+
+
+def draw_polyline_arrow(
+    screen, arrow, rows, cols, color=None, offset=(0, 0)
+):
+    """绘制一条经过多个坐标点的折线箭头。"""
+    line_color = color or arrow["color"]
+    points = []
+    for point in arrow["path"]:
+        x, y = polyline_point_to_screen(point, rows, cols)
+        points.append((x + offset[0], y + offset[1]))
+
+    pygame.draw.lines(screen, line_color, False, points, 8)
+    for point in points[:-1]:
+        pygame.draw.circle(screen, line_color, point, 4)
+
+    dr, dc = get_polyline_direction(arrow["path"])
+    dx, dy = dc, dr
+    tip = points[-1]
+    head_length = 17
+    head_width = 11
+    perpendicular_x, perpendicular_y = -dy, dx
+    base_x = tip[0] - dx * head_length
+    base_y = tip[1] - dy * head_length
+    left = (
+        base_x + perpendicular_x * head_width,
+        base_y + perpendicular_y * head_width,
+    )
+    right = (
+        base_x - perpendicular_x * head_width,
+        base_y - perpendicular_y * head_width,
+    )
+    pygame.draw.polygon(screen, line_color, [tip, left, right])
+
+
+def draw_polyline_board(
+    screen,
+    arrows,
+    rows,
+    cols,
+    blocked_arrow,
+    blocked_until,
+    flying_arrow,
+):
+    """绘制坐标点、全部折线以及正在飞出的折线。"""
+    left, top, spacing = get_polyline_layout(rows, cols)
+    for row in range(rows):
+        for col in range(cols):
+            point = left + col * spacing, top + row * spacing
+            pygame.draw.circle(screen, (74, 86, 121), point, 3)
+
+    for index, arrow in enumerate(arrows):
+        is_blocked = (
+            blocked_arrow == index
+            and pygame.time.get_ticks() < blocked_until
+        )
+        shake_x = 0
+        if is_blocked:
+            shake_x = round(math.sin(pygame.time.get_ticks() * 0.08) * 7)
+        draw_polyline_arrow(
+            screen,
+            arrow,
+            rows,
+            cols,
+            BLOCKED_COLOR if is_blocked else None,
+            (shake_x, 0),
+        )
+
+    if flying_arrow is not None:
+        draw_polyline_arrow(
+            screen,
+            flying_arrow["arrow"],
+            rows,
+            cols,
+            offset=(flying_arrow["offset_x"], flying_arrow["offset_y"]),
+        )
 
 
 def draw_text(screen, font, text, position, color=TEXT_COLOR, center=False):
@@ -446,8 +533,8 @@ def draw_level_select_screen(
         pygame.draw.rect(screen, card_color, rect, border_radius=18)
         pygame.draw.rect(screen, border_color, rect, 2, border_radius=18)
 
-        icon_center = (rect.centerx, rect.y + 58)
-        pygame.draw.circle(screen, (37, 46, 73), icon_center, 35)
+        icon_center = (rect.x + 48, rect.centery)
+        pygame.draw.circle(screen, (37, 46, 73), icon_center, 30)
         pygame.draw.circle(screen, accent, icon_center, 3, 2)
 
         if unlocked:
@@ -475,29 +562,25 @@ def draw_level_select_screen(
             screen,
             fonts["button"],
             f"第 {index + 1} 关",
-            (rect.centerx, rect.y + 115),
+            (rect.x + 90, rect.y + 22),
             TEXT_COLOR if unlocked else (126, 136, 164),
-            center=True,
         )
 
-        rows = len(LEVELS[index])
-        cols = len(LEVELS[index][0])
-        arrow_count = sum(cell != EMPTY for row in LEVELS[index] for cell in row)
+        rows, cols = get_level_dimensions(index)
+        arrow_count = get_level_arrow_count(index)
         draw_text(
             screen,
             fonts["tiny"],
             f"{rows}×{cols} · {arrow_count}支",
-            (rect.centerx, rect.y + 150),
+            (rect.x + 90, rect.y + 63),
             SUBTEXT_COLOR if unlocked else (94, 103, 130),
-            center=True,
         )
         draw_text(
             screen,
             fonts["tiny"],
             "点击挑战" if unlocked else "尚未解锁",
-            (rect.centerx, rect.y + 181),
+            (rect.x + 90, rect.y + 101),
             accent,
-            center=True,
         )
 
     draw_button(
@@ -533,29 +616,52 @@ def draw_game_screen(
     draw_panel(screen, header, (43, 51, 81), 20)
     draw_text(screen, fonts["heading"], f"关卡 {level_index + 1}", (68, 67))
 
-    remaining = sum(cell != EMPTY for row in board for cell in row)
+    if is_polyline_level(level_index):
+        remaining = len(board)
+    else:
+        remaining = sum(cell != EMPTY for row in board for cell in row)
     draw_status_badges(screen, fonts, remaining, mistakes_left)
     draw_settings_button(screen, settings_button, mouse_pos)
 
-    board_left, board_top, cell_size = get_board_layout(
-        len(board), len(board[0])
-    )
-    board_rect = pygame.Rect(
-        board_left - 12,
-        board_top - 12,
-        len(board[0]) * cell_size + 24,
-        len(board) * cell_size + 24,
-    )
-    draw_panel(screen, board_rect, (39, 47, 75), 18)
-    draw_board(screen, board, blocked_cell, blocked_until)
-
-    if flying_arrow is not None:
-        draw_arrow(
-            screen,
-            (flying_arrow["x"], flying_arrow["y"]),
-            flying_arrow["direction"],
-            ARROW_COLOR,
+    if is_polyline_level(level_index):
+        rows, cols = get_level_dimensions(level_index)
+        board_left, board_top, spacing = get_polyline_layout(rows, cols)
+        board_rect = pygame.Rect(
+            board_left - 25,
+            board_top - 20,
+            (cols - 1) * spacing + 50,
+            (rows - 1) * spacing + 40,
         )
+        draw_panel(screen, board_rect, (39, 47, 75), 18)
+        draw_polyline_board(
+            screen,
+            board,
+            rows,
+            cols,
+            blocked_cell,
+            blocked_until,
+            flying_arrow,
+        )
+    else:
+        board_left, board_top, cell_size = get_board_layout(
+            len(board), len(board[0])
+        )
+        board_rect = pygame.Rect(
+            board_left - 12,
+            board_top - 12,
+            len(board[0]) * cell_size + 24,
+            len(board) * cell_size + 24,
+        )
+        draw_panel(screen, board_rect, (39, 47, 75), 18)
+        draw_board(screen, board, blocked_cell, blocked_until)
+
+        if flying_arrow is not None:
+            draw_arrow(
+                screen,
+                (flying_arrow["x"], flying_arrow["y"]),
+                flying_arrow["direction"],
+                ARROW_COLOR,
+            )
 
     message_rect = pygame.Rect(180, 663, 400, 58)
     pygame.draw.rect(screen, (40, 48, 77), message_rect, border_radius=15)

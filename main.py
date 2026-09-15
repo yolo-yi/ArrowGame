@@ -4,12 +4,16 @@ import pygame
 
 from game_logic import (
     can_fly_out,
+    can_polyline_fly_out,
     create_flying_arrow,
+    create_flying_polyline,
     get_cell_from_mouse,
+    get_polyline_arrow_from_mouse,
     reset_level,
     update_flying_arrow,
+    update_flying_polyline,
 )
-from levels import EMPTY, LEVELS
+from levels import EMPTY, LEVELS, get_level_dimensions, is_polyline_level
 from save_data import load_highest_unlocked, save_highest_unlocked
 from settings import (
     ARROW_COLOR,
@@ -71,7 +75,12 @@ def main():
     start_button = pygame.Rect(245, 480, 270, 58)
     level_select_button = pygame.Rect(245, 552, 270, 54)
     level_buttons = [
-        pygame.Rect(105 + index * 185, 255, 150, 215)
+        pygame.Rect(
+            105 + (index % 2) * 300,
+            230 + (index // 2) * 170,
+            250,
+            145,
+        )
         for index in range(len(LEVELS))
     ]
     select_back_button = pygame.Rect(245, 565, 270, 54)
@@ -89,11 +98,22 @@ def main():
 
         if game_state == STATE_PLAYING and not settings_open:
             was_flying = flying_arrow is not None
-            flying_arrow = update_flying_arrow(
-                flying_arrow, delta_time, len(board), len(board[0])
-            )
+            if is_polyline_level(level_index):
+                rows, cols = get_level_dimensions(level_index)
+                flying_arrow = update_flying_polyline(
+                    flying_arrow, delta_time, rows, cols
+                )
+            else:
+                flying_arrow = update_flying_arrow(
+                    flying_arrow, delta_time, len(board), len(board[0])
+                )
             if was_flying and flying_arrow is None:
-                remaining = sum(cell != EMPTY for row in board for cell in row)
+                if is_polyline_level(level_index):
+                    remaining = len(board)
+                else:
+                    remaining = sum(
+                        cell != EMPTY for row in board for cell in row
+                    )
                 if remaining == 0:
                     new_highest = min(level_index + 1, len(LEVELS) - 1)
                     if new_highest > highest_unlocked:
@@ -219,29 +239,51 @@ def main():
             if flying_arrow is not None or mistakes_left <= 0:
                 continue
 
-            cell = get_cell_from_mouse(event.pos, len(board), len(board[0]))
-            if cell is None:
-                continue
-
-            row, col = cell
-            if board[row][col] == EMPTY:
-                continue
-
-            if can_fly_out(board, row, col):
-                direction = board[row][col]
-                board[row][col] = EMPTY
-                blocked_cell = None
-                flying_arrow = create_flying_arrow(
-                    row, col, direction, len(board), len(board[0])
+            if is_polyline_level(level_index):
+                rows, cols = get_level_dimensions(level_index)
+                arrow_index = get_polyline_arrow_from_mouse(
+                    board, event.pos, rows, cols
                 )
-                message = "箭头正在飞出……"
-                message_color = ARROW_COLOR
+                if arrow_index is None:
+                    continue
+
+                if can_polyline_fly_out(
+                    board, arrow_index, rows, cols
+                ):
+                    flying_arrow = create_flying_polyline(board, arrow_index)
+                    blocked_cell = None
+                    message = "整条折线正在飞出……"
+                    message_color = ARROW_COLOR
+                else:
+                    mistakes_left -= 1
+                    blocked_cell = arrow_index
+                    blocked_until = pygame.time.get_ticks() + 450
+                    message = "箭头前方被其他折线阻挡！"
+                    message_color = BLOCKED_COLOR
             else:
-                mistakes_left -= 1
-                blocked_cell = (row, col)
-                blocked_until = pygame.time.get_ticks() + 450
-                message = "前方有箭头阻挡！"
-                message_color = BLOCKED_COLOR
+                cell = get_cell_from_mouse(event.pos, len(board), len(board[0]))
+                if cell is None:
+                    continue
+
+                row, col = cell
+                if board[row][col] == EMPTY:
+                    continue
+
+                if can_fly_out(board, row, col):
+                    direction = board[row][col]
+                    board[row][col] = EMPTY
+                    blocked_cell = None
+                    flying_arrow = create_flying_arrow(
+                        row, col, direction, len(board), len(board[0])
+                    )
+                    message = "箭头正在飞出……"
+                    message_color = ARROW_COLOR
+                else:
+                    mistakes_left -= 1
+                    blocked_cell = (row, col)
+                    blocked_until = pygame.time.get_ticks() + 450
+                    message = "前方有箭头阻挡！"
+                    message_color = BLOCKED_COLOR
 
         screen.blit(background, (0, 0))
 
