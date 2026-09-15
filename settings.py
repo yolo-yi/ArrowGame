@@ -22,6 +22,7 @@ ACCENT_YELLOW = (255, 202, 92)
 SUBTEXT_COLOR = (174, 185, 217)
 
 STATE_START = "start"
+STATE_LEVEL_SELECT = "level_select"
 STATE_PLAYING = "playing"
 STATE_LEVEL_COMPLETE = "level_complete"
 STATE_GAME_OVER = "game_over"

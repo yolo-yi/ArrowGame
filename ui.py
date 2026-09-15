@@ -144,7 +144,105 @@ def draw_button(screen, rect, text, font, mouse_pos, primary=True):
     draw_text(screen, font, text, rect.center, text_color, center=True)
 
 
-def draw_start_screen(screen, fonts, mouse_pos, start_button):
+def draw_settings_button(screen, rect, mouse_pos):
+    """绘制不依赖图标字体的齿轮按钮。"""
+    hovered = rect.collidepoint(mouse_pos)
+    color = BUTTON_HOVER_COLOR if hovered else BUTTON_COLOR
+    pygame.draw.rect(screen, (21, 26, 49), rect.move(0, 5), border_radius=13)
+    pygame.draw.rect(screen, color, rect, border_radius=13)
+    if hovered:
+        pygame.draw.rect(screen, (190, 205, 241), rect, 2, border_radius=13)
+
+    cx, cy = rect.center
+    icon_color = TEXT_COLOR
+    for index in range(8):
+        angle = index * math.pi / 4
+        inner = (cx + math.cos(angle) * 13, cy + math.sin(angle) * 13)
+        outer = (cx + math.cos(angle) * 18, cy + math.sin(angle) * 18)
+        pygame.draw.line(screen, icon_color, inner, outer, 4)
+    pygame.draw.circle(screen, icon_color, (cx, cy), 13, 4)
+    pygame.draw.circle(screen, icon_color, (cx, cy), 4)
+
+
+def draw_settings_menu(
+    screen,
+    fonts,
+    mouse_pos,
+    restart_button,
+    home_button,
+    close_button,
+):
+    """在棋盘上方绘制暂停式设置菜单。"""
+    overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+    overlay.fill((12, 16, 34, 175))
+    screen.blit(overlay, (0, 0))
+
+    card = pygame.Rect(200, 200, 360, 350)
+    draw_panel(screen, card, (48, 57, 88), 28)
+    pygame.draw.rect(screen, (86, 104, 146), card, 2, border_radius=28)
+
+    close_hovered = close_button.collidepoint(mouse_pos)
+    close_color = BLOCKED_COLOR if close_hovered else SUBTEXT_COLOR
+    pygame.draw.circle(screen, (38, 46, 74), close_button.center, 18)
+    pygame.draw.line(
+        screen,
+        close_color,
+        (close_button.x + 10, close_button.y + 10),
+        (close_button.right - 10, close_button.bottom - 10),
+        3,
+    )
+    pygame.draw.line(
+        screen,
+        close_color,
+        (close_button.right - 10, close_button.y + 10),
+        (close_button.x + 10, close_button.bottom - 10),
+        3,
+    )
+
+    draw_text(
+        screen,
+        fonts["result"],
+        "游戏设置",
+        (WINDOW_WIDTH // 2, 270),
+        TEXT_COLOR,
+        center=True,
+    )
+    draw_text(
+        screen,
+        fonts["tiny"],
+        "游戏已暂停",
+        (WINDOW_WIDTH // 2, 310),
+        SUBTEXT_COLOR,
+        center=True,
+    )
+    draw_button(
+        screen,
+        restart_button,
+        "重新开始",
+        fonts["button"],
+        mouse_pos,
+    )
+    draw_button(
+        screen,
+        home_button,
+        "返回主页",
+        fonts["button"],
+        mouse_pos,
+        primary=False,
+    )
+    draw_text(
+        screen,
+        fonts["tiny"],
+        "按 Esc 也可以关闭设置",
+        (WINDOW_WIDTH // 2, 515),
+        (128, 141, 177),
+        center=True,
+    )
+
+
+def draw_start_screen(
+    screen, fonts, mouse_pos, start_button, level_select_button
+):
     """绘制游戏开始界面。"""
     time_seconds = pygame.time.get_ticks() / 1000
 
@@ -209,13 +307,137 @@ def draw_start_screen(screen, fonts, mouse_pos, start_button):
     )
 
     draw_button(screen, start_button, "开始游戏", fonts["button"], mouse_pos)
+    draw_button(
+        screen,
+        level_select_button,
+        "选择关卡",
+        fonts["button"],
+        mouse_pos,
+        primary=False,
+    )
     draw_text(
         screen,
         fonts["tiny"],
         "鼠标点击箭头进行操作",
-        (WINDOW_WIDTH // 2, 605),
+        (WINDOW_WIDTH // 2, 625),
         (135, 149, 185),
         center=True,
+    )
+
+
+def draw_level_select_screen(
+    screen,
+    fonts,
+    mouse_pos,
+    level_buttons,
+    highest_unlocked,
+    back_button,
+):
+    """绘制关卡选择页及锁定状态。"""
+    glow = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+    pygame.draw.circle(glow, (111, 145, 255, 22), (105, 120), 170)
+    pygame.draw.circle(glow, (91, 214, 190, 20), (680, 650), 190)
+    screen.blit(glow, (0, 0))
+
+    panel_rect = pygame.Rect(70, 65, 620, 625)
+    draw_panel(screen, panel_rect, (45, 53, 84), 30)
+    pygame.draw.rect(screen, (74, 88, 127), panel_rect, 2, border_radius=30)
+
+    draw_text(
+        screen,
+        fonts["result"],
+        "选择关卡",
+        (WINDOW_WIDTH // 2, 130),
+        TEXT_COLOR,
+        center=True,
+    )
+    draw_text(
+        screen,
+        fonts["small"],
+        "通关前一关，即可解锁下一关",
+        (WINDOW_WIDTH // 2, 180),
+        SUBTEXT_COLOR,
+        center=True,
+    )
+
+    for index, rect in enumerate(level_buttons):
+        unlocked = index <= highest_unlocked
+        hovered = unlocked and rect.collidepoint(mouse_pos)
+
+        if unlocked:
+            card_color = (59, 75, 105) if hovered else (50, 61, 94)
+            border_color = ARROW_COLOR if hovered else (84, 103, 143)
+            accent = ARROW_COLOR
+        else:
+            card_color = (39, 46, 72)
+            border_color = (62, 70, 99)
+            accent = (105, 115, 145)
+
+        pygame.draw.rect(screen, (22, 27, 49), rect.move(0, 7), border_radius=18)
+        pygame.draw.rect(screen, card_color, rect, border_radius=18)
+        pygame.draw.rect(screen, border_color, rect, 2, border_radius=18)
+
+        icon_center = (rect.centerx, rect.y + 58)
+        pygame.draw.circle(screen, (37, 46, 73), icon_center, 35)
+        pygame.draw.circle(screen, accent, icon_center, 3, 2)
+
+        if unlocked:
+            draw_text(
+                screen,
+                fonts["heading"],
+                str(index + 1),
+                icon_center,
+                accent,
+                center=True,
+            )
+        else:
+            lock_rect = pygame.Rect(icon_center[0] - 12, icon_center[1] - 2, 24, 20)
+            pygame.draw.rect(screen, accent, lock_rect, 3, border_radius=3)
+            pygame.draw.arc(
+                screen,
+                accent,
+                pygame.Rect(icon_center[0] - 9, icon_center[1] - 16, 18, 22),
+                0,
+                math.pi,
+                3,
+            )
+
+        draw_text(
+            screen,
+            fonts["button"],
+            f"第 {index + 1} 关",
+            (rect.centerx, rect.y + 115),
+            TEXT_COLOR if unlocked else (126, 136, 164),
+            center=True,
+        )
+
+        rows = len(LEVELS[index])
+        cols = len(LEVELS[index][0])
+        arrow_count = sum(cell != EMPTY for row in LEVELS[index] for cell in row)
+        draw_text(
+            screen,
+            fonts["tiny"],
+            f"{rows}×{cols} · {arrow_count}支",
+            (rect.centerx, rect.y + 150),
+            SUBTEXT_COLOR if unlocked else (94, 103, 130),
+            center=True,
+        )
+        draw_text(
+            screen,
+            fonts["tiny"],
+            "点击挑战" if unlocked else "尚未解锁",
+            (rect.centerx, rect.y + 181),
+            accent,
+            center=True,
+        )
+
+    draw_button(
+        screen,
+        back_button,
+        "返回首页",
+        fonts["button"],
+        mouse_pos,
+        primary=False,
     )
 
 
@@ -228,7 +450,11 @@ def draw_game_screen(
     mistakes_left,
     message,
     message_color,
-    restart_button,
+    settings_button,
+    settings_open,
+    settings_restart_button,
+    settings_home_button,
+    settings_close_button,
     blocked_cell,
     blocked_until,
     flying_arrow,
@@ -247,14 +473,7 @@ def draw_game_screen(
         (374, 74),
         BLOCKED_COLOR if mistakes_left == 1 else SUBTEXT_COLOR,
     )
-    draw_button(
-        screen,
-        restart_button,
-        "重新开始",
-        fonts["tiny"],
-        mouse_pos,
-        primary=False,
-    )
+    draw_settings_button(screen, settings_button, mouse_pos)
 
     board_left, board_top, cell_size = get_board_layout(
         len(board), len(board[0])
@@ -286,6 +505,16 @@ def draw_game_screen(
         message_color,
         center=True,
     )
+
+    if settings_open:
+        draw_settings_menu(
+            screen,
+            fonts,
+            mouse_pos,
+            settings_restart_button,
+            settings_home_button,
+            settings_close_button,
+        )
 
 
 def draw_result_screen(

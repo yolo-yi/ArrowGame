@@ -10,12 +10,14 @@ from game_logic import (
     update_flying_arrow,
 )
 from levels import EMPTY, LEVELS
+from save_data import load_highest_unlocked, save_highest_unlocked
 from settings import (
     ARROW_COLOR,
     BLOCKED_COLOR,
     FPS,
     STATE_GAME_OVER,
     STATE_LEVEL_COMPLETE,
+    STATE_LEVEL_SELECT,
     STATE_PLAYING,
     STATE_START,
     TEXT_COLOR,
@@ -25,6 +27,7 @@ from settings import (
 from ui import (
     create_background,
     draw_game_screen,
+    draw_level_select_screen,
     draw_result_screen,
     draw_start_screen,
 )
@@ -52,6 +55,7 @@ def main():
     background = create_background()
 
     level_index = 0
+    highest_unlocked = load_highest_unlocked(len(LEVELS))
     game_state = STATE_START
     (
         board,
@@ -62,9 +66,19 @@ def main():
         blocked_until,
         flying_arrow,
     ) = reset_level(level_index)
+    settings_open = False
 
-    start_button = pygame.Rect(245, 505, 270, 62)
-    restart_button = pygame.Rect(558, 63, 130, 46)
+    start_button = pygame.Rect(245, 480, 270, 58)
+    level_select_button = pygame.Rect(245, 552, 270, 54)
+    level_buttons = [
+        pygame.Rect(105 + index * 185, 255, 150, 215)
+        for index in range(len(LEVELS))
+    ]
+    select_back_button = pygame.Rect(245, 565, 270, 54)
+    settings_button = pygame.Rect(638, 63, 50, 46)
+    settings_restart_button = pygame.Rect(255, 340, 250, 56)
+    settings_home_button = pygame.Rect(255, 416, 250, 56)
+    settings_close_button = pygame.Rect(515, 215, 34, 34)
     primary_button = pygame.Rect(235, 475, 290, 60)
     home_button = pygame.Rect(235, 555, 290, 56)
     running = True
@@ -73,7 +87,7 @@ def main():
         delta_time = clock.tick(FPS) / 1000
         mouse_pos = pygame.mouse.get_pos()
 
-        if game_state == STATE_PLAYING:
+        if game_state == STATE_PLAYING and not settings_open:
             was_flying = flying_arrow is not None
             flying_arrow = update_flying_arrow(
                 flying_arrow, delta_time, len(board), len(board[0])
@@ -81,6 +95,10 @@ def main():
             if was_flying and flying_arrow is None:
                 remaining = sum(cell != EMPTY for row in board for cell in row)
                 if remaining == 0:
+                    new_highest = min(level_index + 1, len(LEVELS) - 1)
+                    if new_highest > highest_unlocked:
+                        highest_unlocked = new_highest
+                        save_highest_unlocked(highest_unlocked)
                     game_state = STATE_LEVEL_COMPLETE
                 else:
                     message = "成功飞出！"
@@ -94,10 +112,13 @@ def main():
                 running = False
 
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                if game_state == STATE_START:
+                if game_state == STATE_PLAYING and settings_open:
+                    settings_open = False
+                elif game_state == STATE_START:
                     running = False
                 else:
                     game_state = STATE_START
+                    settings_open = False
 
             if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
                 continue
@@ -114,12 +135,37 @@ def main():
                         blocked_until,
                         flying_arrow,
                     ) = reset_level(level_index)
+                    settings_open = False
                     game_state = STATE_PLAYING
+                elif level_select_button.collidepoint(event.pos):
+                    game_state = STATE_LEVEL_SELECT
+                continue
+
+            if game_state == STATE_LEVEL_SELECT:
+                if select_back_button.collidepoint(event.pos):
+                    game_state = STATE_START
+                else:
+                    for index, button in enumerate(level_buttons):
+                        if button.collidepoint(event.pos) and index <= highest_unlocked:
+                            level_index = index
+                            (
+                                board,
+                                mistakes_left,
+                                message,
+                                message_color,
+                                blocked_cell,
+                                blocked_until,
+                                flying_arrow,
+                            ) = reset_level(level_index)
+                            settings_open = False
+                            game_state = STATE_PLAYING
+                            break
                 continue
 
             if game_state in (STATE_LEVEL_COMPLETE, STATE_GAME_OVER):
                 if home_button.collidepoint(event.pos):
                     game_state = STATE_START
+                    settings_open = False
                 elif primary_button.collidepoint(event.pos):
                     if game_state == STATE_LEVEL_COMPLETE:
                         if level_index + 1 < len(LEVELS):
@@ -135,23 +181,38 @@ def main():
                         blocked_until,
                         flying_arrow,
                     ) = reset_level(level_index)
+                    settings_open = False
                     game_state = STATE_PLAYING
                 continue
 
             if game_state != STATE_PLAYING:
                 continue
 
-            if restart_button.collidepoint(event.pos):
-                (
-                    board,
-                    mistakes_left,
-                    message,
-                    message_color,
-                    blocked_cell,
-                    blocked_until,
-                    flying_arrow,
-                ) = reset_level(level_index)
-                message = "本关已重新开始"
+            if settings_open:
+                if (
+                    settings_button.collidepoint(event.pos)
+                    or settings_close_button.collidepoint(event.pos)
+                ):
+                    settings_open = False
+                elif settings_restart_button.collidepoint(event.pos):
+                    (
+                        board,
+                        mistakes_left,
+                        message,
+                        message_color,
+                        blocked_cell,
+                        blocked_until,
+                        flying_arrow,
+                    ) = reset_level(level_index)
+                    message = "本关已重新开始"
+                    settings_open = False
+                elif settings_home_button.collidepoint(event.pos):
+                    game_state = STATE_START
+                    settings_open = False
+                continue
+
+            if settings_button.collidepoint(event.pos):
+                settings_open = True
                 continue
 
             # 飞行动画播放期间暂时不接受其他棋盘点击。
@@ -185,7 +246,22 @@ def main():
         screen.blit(background, (0, 0))
 
         if game_state == STATE_START:
-            draw_start_screen(screen, fonts, mouse_pos, start_button)
+            draw_start_screen(
+                screen,
+                fonts,
+                mouse_pos,
+                start_button,
+                level_select_button,
+            )
+        elif game_state == STATE_LEVEL_SELECT:
+            draw_level_select_screen(
+                screen,
+                fonts,
+                mouse_pos,
+                level_buttons,
+                highest_unlocked,
+                select_back_button,
+            )
         elif game_state == STATE_PLAYING:
             draw_game_screen(
                 screen,
@@ -196,7 +272,11 @@ def main():
                 mistakes_left,
                 message,
                 message_color,
-                restart_button,
+                settings_button,
+                settings_open,
+                settings_restart_button,
+                settings_home_button,
+                settings_close_button,
                 blocked_cell,
                 blocked_until,
                 flying_arrow,
