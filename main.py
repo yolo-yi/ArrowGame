@@ -9,8 +9,8 @@ from levels import EMPTY, LEVELS
 WINDOW_WIDTH = 760
 WINDOW_HEIGHT = 760
 FPS = 60
-CELL_SIZE = 96
-BOARD_LEFT = 140
+BOARD_AREA_SIZE = 480
+MAX_CELL_SIZE = 96
 BOARD_TOP = 150
 
 BACKGROUND = (35, 42, 68)
@@ -89,30 +89,42 @@ def draw_arrow(surface, center, direction, color, offset=(0, 0)):
     pygame.draw.polygon(surface, color, [tip, left, right])
 
 
+def get_board_layout(rows, cols):
+    """根据网格规模计算居中的棋盘位置与格子尺寸。"""
+    cell_size = min(MAX_CELL_SIZE, BOARD_AREA_SIZE // max(rows, cols))
+    board_width = cols * cell_size
+    board_left = (WINDOW_WIDTH - board_width) // 2
+    return board_left, BOARD_TOP, cell_size
+
+
 def get_cell_from_mouse(mouse_pos, rows, cols):
     """把鼠标坐标转换成棋盘行列，棋盘外返回 None。"""
     x, y = mouse_pos
-    board_width = cols * CELL_SIZE
-    board_height = rows * CELL_SIZE
+    board_left, board_top, cell_size = get_board_layout(rows, cols)
+    board_width = cols * cell_size
+    board_height = rows * cell_size
 
-    if not (BOARD_LEFT <= x < BOARD_LEFT + board_width):
+    if not (board_left <= x < board_left + board_width):
         return None
-    if not (BOARD_TOP <= y < BOARD_TOP + board_height):
+    if not (board_top <= y < board_top + board_height):
         return None
 
-    col = (x - BOARD_LEFT) // CELL_SIZE
-    row = (y - BOARD_TOP) // CELL_SIZE
+    col = (x - board_left) // cell_size
+    row = (y - board_top) // cell_size
     return int(row), int(col)
 
 
 def draw_board(screen, board, blocked_cell, blocked_until):
+    board_left, board_top, cell_size = get_board_layout(
+        len(board), len(board[0])
+    )
     for row in range(len(board)):
         for col in range(len(board[0])):
             rect = pygame.Rect(
-                BOARD_LEFT + col * CELL_SIZE,
-                BOARD_TOP + row * CELL_SIZE,
-                CELL_SIZE,
-                CELL_SIZE,
+                board_left + col * cell_size,
+                board_top + row * cell_size,
+                cell_size,
+                cell_size,
             )
             pygame.draw.rect(screen, PANEL, rect)
             pygame.draw.rect(screen, GRID_LINE, rect, 2)
@@ -134,11 +146,12 @@ def draw_board(screen, board, blocked_cell, blocked_until):
             draw_arrow(screen, rect.center, arrow, color, (shake_x, 0))
 
 
-def create_flying_arrow(row, col, direction):
+def create_flying_arrow(row, col, direction, rows, cols):
     """创建成功点击后的飞行动画数据。"""
+    board_left, board_top, cell_size = get_board_layout(rows, cols)
     return {
-        "x": BOARD_LEFT + col * CELL_SIZE + CELL_SIZE / 2,
-        "y": BOARD_TOP + row * CELL_SIZE + CELL_SIZE / 2,
+        "x": board_left + col * cell_size + cell_size / 2,
+        "y": board_top + row * cell_size + cell_size / 2,
         "direction": direction,
     }
 
@@ -152,11 +165,12 @@ def update_flying_arrow(flying_arrow, delta_time, rows, cols):
     flying_arrow["x"] += dc * FLIGHT_SPEED * delta_time
     flying_arrow["y"] += dr * FLIGHT_SPEED * delta_time
 
+    board_left, board_top, cell_size = get_board_layout(rows, cols)
     margin = 40
-    left = BOARD_LEFT - margin
-    right = BOARD_LEFT + cols * CELL_SIZE + margin
-    top = BOARD_TOP - margin
-    bottom = BOARD_TOP + rows * CELL_SIZE + margin
+    left = board_left - margin
+    right = board_left + cols * cell_size + margin
+    top = board_top - margin
+    bottom = board_top + rows * cell_size + margin
 
     if not (
         left <= flying_arrow["x"] <= right
@@ -341,11 +355,14 @@ def draw_game_screen(
         primary=False,
     )
 
+    board_left, board_top, cell_size = get_board_layout(
+        len(board), len(board[0])
+    )
     board_rect = pygame.Rect(
-        BOARD_LEFT - 12,
-        BOARD_TOP - 12,
-        len(board[0]) * CELL_SIZE + 24,
-        len(board) * CELL_SIZE + 24,
+        board_left - 12,
+        board_top - 12,
+        len(board[0]) * cell_size + 24,
+        len(board) * cell_size + 24,
     )
     draw_panel(screen, board_rect, (39, 47, 75), 18)
     draw_board(screen, board, blocked_cell, blocked_until)
@@ -588,7 +605,11 @@ def main():
                                 board[row][col] = EMPTY
                                 blocked_cell = None
                                 flying_arrow = create_flying_arrow(
-                                    row, col, direction
+                                    row,
+                                    col,
+                                    direction,
+                                    len(board),
+                                    len(board[0]),
                                 )
                                 message = "箭头正在飞出……"
                                 message_color = ARROW_COLOR
