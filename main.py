@@ -21,6 +21,7 @@ BLOCKED_COLOR = (255, 91, 105)
 TEXT_COLOR = (245, 247, 255)
 BUTTON_COLOR = (79, 96, 145)
 BUTTON_HOVER_COLOR = (99, 119, 175)
+FLIGHT_SPEED = 520
 
 DIRECTIONS = {
     "^": (-1, 0),
@@ -125,6 +126,39 @@ def draw_board(screen, board, blocked_cell, blocked_until):
             draw_arrow(screen, rect.center, arrow, color, (shake_x, 0))
 
 
+def create_flying_arrow(row, col, direction):
+    """创建成功点击后的飞行动画数据。"""
+    return {
+        "x": BOARD_LEFT + col * CELL_SIZE + CELL_SIZE / 2,
+        "y": BOARD_TOP + row * CELL_SIZE + CELL_SIZE / 2,
+        "direction": direction,
+    }
+
+
+def update_flying_arrow(flying_arrow, delta_time, rows, cols):
+    """推进飞行动画；箭头越过棋盘边缘后返回 None。"""
+    if flying_arrow is None:
+        return None
+
+    dr, dc = DIRECTIONS[flying_arrow["direction"]]
+    flying_arrow["x"] += dc * FLIGHT_SPEED * delta_time
+    flying_arrow["y"] += dr * FLIGHT_SPEED * delta_time
+
+    margin = 40
+    left = BOARD_LEFT - margin
+    right = BOARD_LEFT + cols * CELL_SIZE + margin
+    top = BOARD_TOP - margin
+    bottom = BOARD_TOP + rows * CELL_SIZE + margin
+
+    if not (
+        left <= flying_arrow["x"] <= right
+        and top <= flying_arrow["y"] <= bottom
+    ):
+        return None
+
+    return flying_arrow
+
+
 def draw_text(screen, font, text, position, color=TEXT_COLOR, center=False):
     image = font.render(text, True, color)
     rect = image.get_rect()
@@ -151,12 +185,23 @@ def main():
     message_color = TEXT_COLOR
     blocked_cell = None
     blocked_until = 0
+    flying_arrow = None
 
     restart_button = pygame.Rect(560, 72, 130, 48)
     running = True
 
     while running:
+        delta_time = clock.tick(FPS) / 1000
         mouse_pos = pygame.mouse.get_pos()
+
+        was_flying = flying_arrow is not None
+        flying_arrow = update_flying_arrow(
+            flying_arrow, delta_time, len(board), len(board[0])
+        )
+        if was_flying and flying_arrow is None:
+            remaining = sum(cell != EMPTY for row in board for cell in row)
+            message = "本关完成！" if remaining == 0 else "成功飞出！"
+            message_color = ARROW_COLOR
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -167,8 +212,13 @@ def main():
                     board = copy.deepcopy(LEVELS[level_index])
                     mistakes_left = 3
                     blocked_cell = None
+                    flying_arrow = None
                     message = "本关已重新开始"
                     message_color = TEXT_COLOR
+                    continue
+
+                # 飞行动画播放期间暂时不接受其他棋盘点击。
+                if flying_arrow is not None:
                     continue
 
                 cell = get_cell_from_mouse(event.pos, len(board), len(board[0]))
@@ -180,9 +230,11 @@ def main():
                     continue
 
                 if can_fly_out(board, row, col):
+                    direction = board[row][col]
                     board[row][col] = EMPTY
                     blocked_cell = None
-                    message = "成功飞出！"
+                    flying_arrow = create_flying_arrow(row, col, direction)
+                    message = "箭头正在飞出……"
                     message_color = ARROW_COLOR
                 else:
                     mistakes_left -= 1
@@ -207,6 +259,13 @@ def main():
         draw_text(screen, small_font, "重新开始", restart_button.center, center=True)
 
         draw_board(screen, board, blocked_cell, blocked_until)
+        if flying_arrow is not None:
+            draw_arrow(
+                screen,
+                (flying_arrow["x"], flying_arrow["y"]),
+                flying_arrow["direction"],
+                ARROW_COLOR,
+            )
         draw_text(
             screen,
             font,
@@ -216,7 +275,7 @@ def main():
             center=True,
         )
 
-        if remaining == 0:
+        if remaining == 0 and flying_arrow is None:
             draw_text(
                 screen,
                 font,
@@ -236,7 +295,6 @@ def main():
             )
 
         pygame.display.flip()
-        clock.tick(FPS)
 
     pygame.quit()
 
