@@ -22,12 +22,19 @@ from settings import (
 )
 
 
-def draw_arrow(surface, center, direction, color, offset=(0, 0)):
+def draw_arrow(
+    surface,
+    center,
+    direction,
+    color,
+    offset=(0, 0),
+    length=48,
+    head=15,
+    line_width=7,
+):
     """使用线段和三角形画箭头，不依赖字体中的箭头符号。"""
     cx = center[0] + offset[0]
     cy = center[1] + offset[1]
-    length = 48
-    head = 15
 
     vectors = {
         "^": (0, -1),
@@ -39,7 +46,7 @@ def draw_arrow(surface, center, direction, color, offset=(0, 0)):
 
     start = (cx - dx * length / 2, cy - dy * length / 2)
     tip = (cx + dx * length / 2, cy + dy * length / 2)
-    pygame.draw.line(surface, color, start, tip, 7)
+    pygame.draw.line(surface, color, start, tip, line_width)
 
     perpendicular_x, perpendicular_y = -dy, dx
     left = (
@@ -51,6 +58,68 @@ def draw_arrow(surface, center, direction, color, offset=(0, 0)):
         tip[1] - dy * head - perpendicular_y * head,
     )
     pygame.draw.polygon(surface, color, [tip, left, right])
+
+
+def draw_heart(surface, center, color, size=12):
+    """使用基础图形绘制一颗心，避免依赖emoji字体。"""
+    x, y = center
+    radius = round(size * 0.56)
+    pygame.draw.circle(
+        surface, color, (round(x - size * 0.48), round(y - size * 0.25)), radius
+    )
+    pygame.draw.circle(
+        surface, color, (round(x + size * 0.48), round(y - size * 0.25)), radius
+    )
+    pygame.draw.polygon(
+        surface,
+        color,
+        [
+            (round(x - size), y),
+            (round(x + size), y),
+            (x, round(y + size * 1.35)),
+        ],
+    )
+
+
+def draw_status_badges(screen, fonts, remaining, mistakes_left):
+    """用箭头计数徽章和心形图标显示游戏状态。"""
+    arrow_badge = pygame.Rect(202, 61, 138, 52)
+    hearts_badge = pygame.Rect(360, 61, 182, 52)
+
+    for badge in (arrow_badge, hearts_badge):
+        pygame.draw.rect(screen, (34, 43, 71), badge, border_radius=14)
+        pygame.draw.rect(screen, (68, 82, 119), badge, 2, border_radius=14)
+
+    pygame.draw.circle(screen, (35, 75, 78), (232, 87), 18)
+    draw_arrow(
+        screen,
+        (232, 87),
+        ">",
+        ARROW_COLOR,
+        length=20,
+        head=7,
+        line_width=4,
+    )
+    draw_text(
+        screen,
+        fonts["heading"],
+        f"× {remaining}",
+        (286, 86),
+        TEXT_COLOR,
+        center=True,
+    )
+
+    for index in range(3):
+        active = index < mistakes_left
+        color = BLOCKED_COLOR if active else (72, 81, 111)
+        draw_heart(screen, (398 + index * 52, 84), color)
+        if active:
+            pygame.draw.circle(
+                screen,
+                (255, 158, 166),
+                (394 + index * 52, 79),
+                2,
+            )
 
 
 def draw_board(screen, board, blocked_cell, blocked_until):
@@ -465,14 +534,7 @@ def draw_game_screen(
     draw_text(screen, fonts["heading"], f"关卡 {level_index + 1}", (68, 67))
 
     remaining = sum(cell != EMPTY for row in board for cell in row)
-    draw_text(screen, fonts["small"], f"箭头 {remaining}", (226, 74), SUBTEXT_COLOR)
-    draw_text(
-        screen,
-        fonts["small"],
-        f"机会 {mistakes_left}",
-        (374, 74),
-        BLOCKED_COLOR if mistakes_left == 1 else SUBTEXT_COLOR,
-    )
+    draw_status_badges(screen, fonts, remaining, mistakes_left)
     draw_settings_button(screen, settings_button, mouse_pos)
 
     board_left, board_top, cell_size = get_board_layout(
