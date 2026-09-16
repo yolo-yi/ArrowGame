@@ -14,5 +14,9 @@ venv/
 .DS_Store
 Thumbs.db
 
+# 打包临时文件和输出目录
+build/
+dist/
+
 # 本地游戏进度
 progress.json
