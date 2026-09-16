@@ -180,8 +180,10 @@ def draw_polyline_arrow(
     dr, dc = get_polyline_direction(arrow["path"])
     dx, dy = dc, dr
     tip = points[-1]
-    head_length = 12
-    head_width = 7
+    _, _, spacing = get_polyline_layout(rows, cols)
+    detail_scale = min(1.0, spacing / 30)
+    head_length = 12 * detail_scale
+    head_width = 7 * detail_scale
     perpendicular_x, perpendicular_y = -dy, dx
     base_x = tip[0] - dx * head_length
     base_y = tip[1] - dy * head_length
@@ -215,7 +217,7 @@ def draw_polyline_arrow(
         after = math.dist(corner, following)
         if before == 0 or after == 0:
             continue
-        radius = min(6, before / 2, after / 2)
+        radius = min(6 * detail_scale, before / 2, after / 2)
         entry = tuple(corner[i] + (previous[i] - corner[i]) * radius / before for i in (0, 1))
         leave = tuple(corner[i] + (following[i] - corner[i]) * radius / after for i in (0, 1))
         smooth_points.append(entry)
@@ -226,11 +228,11 @@ def draw_polyline_arrow(
                 for i in (0, 1)
             ))
     # 线杆在箭头内部结束，避免粗线从三角尖端露出。
-    smooth_points.append((tip[0] - dx * 4, tip[1] - dy * 4))
+    smooth_points.append((tip[0] - dx * 4 * detail_scale, tip[1] - dy * 4 * detail_scale))
     pixels = [local(point) for point in smooth_points]
-    pygame.draw.lines(layer, line_color, False, pixels, 5 * scale)
+    pygame.draw.lines(layer, line_color, False, pixels, round(5 * scale * detail_scale))
     for point in pixels:
-        pygame.draw.circle(layer, line_color, point, 7)
+        pygame.draw.circle(layer, line_color, point, round(7 * detail_scale))
     pygame.draw.polygon(layer, line_color, [local(tip), local(left), local(right)])
     screen.blit(pygame.transform.smoothscale(layer, (width, height)), (origin_x, origin_y))
 
@@ -249,7 +251,7 @@ def draw_polyline_board(
     for row in range(rows):
         for col in range(cols):
             point = left + col * spacing, top + row * spacing
-            pygame.draw.circle(screen, (66, 78, 108), point, 2)
+            pygame.draw.circle(screen, (66, 78, 108), point, 1 if spacing < 30 else 2)
 
     for index, arrow in enumerate(arrows):
         is_blocked = (

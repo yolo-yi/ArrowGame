@@ -121,7 +121,8 @@ def can_polyline_fly_out(arrows, arrow_index, rows, cols):
 
 def get_polyline_arrow_from_mouse(arrows, mouse_pos, rows, cols):
     """点击折线任意线段时返回对应箭头索引。"""
-    tolerance = 11
+    _, _, spacing = get_polyline_layout(rows, cols)
+    tolerance = min(11, spacing * 0.38)
     mouse_x, mouse_y = mouse_pos
 
     for index in range(len(arrows) - 1, -1, -1):
