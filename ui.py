@@ -93,12 +93,20 @@ def draw_heart(surface, center, color, size=12):
     )
 
 
-def draw_status_badges(screen, fonts, remaining, mistakes_left):
-    """用箭头计数徽章和心形图标显示游戏状态。"""
+def draw_status_badges(
+    screen,
+    fonts,
+    remaining,
+    mistakes_left,
+    score,
+    time_left,
+):
+    """显示剩余箭头、生命、得分和倒计时。"""
     arrow_badge = pygame.Rect(202, 61, 138, 52)
     hearts_badge = pygame.Rect(360, 61, 182, 52)
+    timer_badge = pygame.Rect(548, 61, 80, 52)
 
-    for badge in (arrow_badge, hearts_badge):
+    for badge in (arrow_badge, hearts_badge, timer_badge):
         pygame.draw.rect(screen, (34, 43, 71), badge, border_radius=14)
         pygame.draw.rect(screen, (68, 82, 119), badge, 2, border_radius=14)
 
@@ -133,8 +141,42 @@ def draw_status_badges(screen, fonts, remaining, mistakes_left):
                 2,
             )
 
+    seconds_left = max(0, math.ceil(time_left))
+    timer_color = (
+        BLOCKED_COLOR
+        if seconds_left <= 10
+        else ACCENT_YELLOW if seconds_left <= 30 else TEXT_COLOR
+    )
+    clock_center = (561, 87)
+    pygame.draw.circle(screen, timer_color, clock_center, 9, 2)
+    pygame.draw.line(screen, timer_color, clock_center, (561, 81), 2)
+    pygame.draw.line(screen, timer_color, clock_center, (566, 87), 2)
+    draw_text(
+        screen,
+        fonts["tiny"],
+        f"{seconds_left // 60}:{seconds_left % 60:02d}",
+        (598, 87),
+        timer_color,
+        center=True,
+    )
 
-def draw_board(screen, board, blocked_cell, blocked_until):
+    draw_text(
+        screen,
+        fonts["tiny"],
+        f"得分 {score}",
+        (70, 101),
+        ACCENT_YELLOW,
+    )
+
+
+def draw_board(
+    screen,
+    board,
+    blocked_cell,
+    blocked_until,
+    hinted_cell,
+    hint_until,
+):
     board_left, board_top, cell_size = get_board_layout(
         len(board), len(board[0])
     )
@@ -157,10 +199,28 @@ def draw_board(screen, board, blocked_cell, blocked_until):
                 blocked_cell == (row, col)
                 and pygame.time.get_ticks() < blocked_until
             )
-            color = BLOCKED_COLOR if is_blocked else ARROW_COLOR
+            is_hinted = (
+                hinted_cell == (row, col)
+                and pygame.time.get_ticks() < hint_until
+            )
+            color = (
+                BLOCKED_COLOR
+                if is_blocked
+                else ACCENT_YELLOW if is_hinted else ARROW_COLOR
+            )
             shake_x = 0
             if is_blocked:
                 shake_x = round(math.sin(pygame.time.get_ticks() * 0.08) * 7)
+
+            if is_hinted:
+                pulse = round(math.sin(pygame.time.get_ticks() * 0.01) * 3)
+                pygame.draw.circle(
+                    screen,
+                    ACCENT_YELLOW,
+                    rect.center,
+                    max(18, cell_size // 3) + pulse,
+                    3,
+                )
 
             draw_arrow(screen, rect.center, arrow, color, (shake_x, 0))
 
@@ -244,6 +304,8 @@ def draw_polyline_board(
     cols,
     blocked_arrow,
     blocked_until,
+    hinted_arrow,
+    hint_until,
     flying_arrow,
 ):
     """绘制坐标点、全部折线以及正在飞出的折线。"""
@@ -258,6 +320,10 @@ def draw_polyline_board(
             blocked_arrow == index
             and pygame.time.get_ticks() < blocked_until
         )
+        is_hinted = (
+            hinted_arrow == index
+            and pygame.time.get_ticks() < hint_until
+        )
         shake_x = 0
         if is_blocked:
             shake_x = round(math.sin(pygame.time.get_ticks() * 0.08) * 7)
@@ -266,9 +332,22 @@ def draw_polyline_board(
             arrow,
             rows,
             cols,
-            BLOCKED_COLOR if is_blocked else None,
+            BLOCKED_COLOR
+            if is_blocked
+            else ACCENT_YELLOW if is_hinted else None,
             (shake_x, 0),
         )
+
+        if is_hinted:
+            head = polyline_point_to_screen(arrow["path"][-1], rows, cols)
+            pulse = round(math.sin(pygame.time.get_ticks() * 0.01) * 2)
+            pygame.draw.circle(
+                screen,
+                ACCENT_YELLOW,
+                head,
+                10 + pulse,
+                2,
+            )
 
     if flying_arrow is not None:
         draw_polyline_arrow(
@@ -338,6 +417,83 @@ def draw_button(screen, rect, text, font, mouse_pos, primary=True):
         pygame.draw.rect(screen, (220, 255, 247), rect, 2, border_radius=15)
 
     draw_text(screen, font, text, rect.center, text_color, center=True)
+
+
+def draw_ai_solve_button(screen, rect, fonts, mouse_pos, active):
+    """绘制可启动或停止自动求解的状态按钮。"""
+    hovered = rect.collidepoint(mouse_pos)
+    if active:
+        color = (255, 112, 124) if hovered else BLOCKED_COLOR
+        label = "停止求解"
+    else:
+        color = (129, 158, 255) if hovered else ACCENT_BLUE
+        label = "AI 自动求解"
+
+    pygame.draw.rect(screen, (21, 26, 49), rect.move(0, 6), border_radius=15)
+    pygame.draw.rect(screen, color, rect, border_radius=15)
+    if hovered:
+        pygame.draw.rect(screen, (224, 231, 255), rect, 2, border_radius=15)
+
+    # 左侧的三个节点表现简单的自动分析图标。
+    icon_x = rect.x + 20
+    pygame.draw.line(
+        screen,
+        (31, 39, 65),
+        (icon_x, rect.centery - 7),
+        (icon_x + 8, rect.centery),
+        2,
+    )
+    pygame.draw.line(
+        screen,
+        (31, 39, 65),
+        (icon_x, rect.centery + 7),
+        (icon_x + 8, rect.centery),
+        2,
+    )
+    for point in (
+        (icon_x, rect.centery - 7),
+        (icon_x, rect.centery + 7),
+        (icon_x + 8, rect.centery),
+    ):
+        pygame.draw.circle(screen, (31, 39, 65), point, 3)
+    draw_text(
+        screen,
+        fonts["tiny"],
+        label,
+        (rect.centerx + 10, rect.centery),
+        (27, 35, 58),
+        center=True,
+    )
+
+
+def draw_hint_button(screen, rect, fonts, mouse_pos):
+    """按照参考图绘制青色外圈、黄色灯泡样式的提示按钮。"""
+    hovered = rect.collidepoint(mouse_pos)
+    panel_color = (52, 68, 99) if hovered else (40, 49, 78)
+    pygame.draw.rect(screen, (21, 26, 49), rect.move(0, 5), border_radius=14)
+    pygame.draw.rect(screen, panel_color, rect, border_radius=14)
+    if hovered:
+        pygame.draw.rect(screen, ARROW_COLOR, rect, 2, border_radius=14)
+
+    cx, cy = rect.centerx, rect.y + 20
+    pygame.draw.circle(screen, (25, 77, 81), (cx, cy), 17)
+    pygame.draw.circle(screen, ARROW_COLOR, (cx, cy), 17, 2)
+    pygame.draw.circle(screen, (238, 181, 38), (cx, cy), 13)
+    pygame.draw.circle(screen, (255, 214, 75), (cx - 3, cy - 4), 6)
+
+    bulb_color = (255, 247, 190)
+    pygame.draw.circle(screen, bulb_color, (cx, cy - 3), 5, 2)
+    pygame.draw.line(screen, bulb_color, (cx - 3, cy + 1), (cx - 1, cy + 6), 2)
+    pygame.draw.line(screen, bulb_color, (cx + 3, cy + 1), (cx + 1, cy + 6), 2)
+    pygame.draw.line(screen, bulb_color, (cx - 2, cy + 7), (cx + 2, cy + 7), 2)
+    draw_text(
+        screen,
+        fonts["tiny"],
+        "提示",
+        (cx, rect.bottom - 10),
+        TEXT_COLOR,
+        center=True,
+    )
 
 
 def draw_settings_button(screen, rect, mouse_pos):
@@ -543,31 +699,48 @@ def draw_level_select_screen(
         screen,
         fonts["result"],
         "选择关卡",
-        (WINDOW_WIDTH // 2, 130),
+        (WINDOW_WIDTH // 2, 112),
         TEXT_COLOR,
         center=True,
     )
     draw_text(
         screen,
         fonts["small"],
-        "通关前一关，即可解锁下一关",
-        (WINDOW_WIDTH // 2, 180),
+        "完成基础训练，逐步解锁更难的挑战",
+        (WINDOW_WIDTH // 2, 157),
         SUBTEXT_COLOR,
         center=True,
     )
 
+    # 两类关卡各自使用独立标题和强调色，便于玩家快速辨认。
+    section_labels = (
+        ("基础关卡", "第 1–3 关", 198, ARROW_COLOR),
+        ("挑战关卡", "第 4–5 关", 386, ACCENT_YELLOW),
+    )
+    for title, range_text, y, color in section_labels:
+        pygame.draw.circle(screen, color, (97, y), 5)
+        draw_text(screen, fonts["small"], title, (111, y - 13), TEXT_COLOR)
+        draw_text(screen, fonts["tiny"], range_text, (216, y - 11), color)
+        pygame.draw.line(screen, (70, 82, 119), (310, y), (661, y), 2)
+
     for index, rect in enumerate(level_buttons):
         unlocked = index <= highest_unlocked
         hovered = unlocked and rect.collidepoint(mouse_pos)
+        is_challenge = index >= 3
 
         if unlocked:
-            card_color = (59, 75, 105) if hovered else (50, 61, 94)
-            border_color = ARROW_COLOR if hovered else (84, 103, 143)
-            accent = ARROW_COLOR
+            if is_challenge:
+                card_color = (75, 69, 101) if hovered else (57, 55, 88)
+                border_color = ACCENT_YELLOW if hovered else (132, 112, 91)
+                accent = ACCENT_YELLOW
+            else:
+                card_color = (59, 75, 105) if hovered else (50, 61, 94)
+                border_color = ARROW_COLOR if hovered else (84, 103, 143)
+                accent = ARROW_COLOR
         else:
             card_color = (39, 46, 72)
             border_color = (62, 70, 99)
-            accent = (105, 115, 145)
+            accent = (132, 119, 91) if is_challenge else (105, 115, 145)
 
         pygame.draw.rect(screen, (22, 27, 49), rect.move(0, 7), border_radius=18)
         pygame.draw.rect(screen, card_color, rect, border_radius=18)
@@ -640,8 +813,15 @@ def draw_game_screen(
     board,
     level_index,
     mistakes_left,
+    score,
+    time_left,
     message,
     message_color,
+    ai_solve_button,
+    ai_solving,
+    hint_button,
+    hinted_cell,
+    hint_until,
     settings_button,
     settings_open,
     settings_restart_button,
@@ -660,7 +840,14 @@ def draw_game_screen(
         remaining = len(board)
     else:
         remaining = sum(cell != EMPTY for row in board for cell in row)
-    draw_status_badges(screen, fonts, remaining, mistakes_left)
+    draw_status_badges(
+        screen,
+        fonts,
+        remaining,
+        mistakes_left,
+        score,
+        time_left,
+    )
     draw_settings_button(screen, settings_button, mouse_pos)
 
     if is_polyline_level(level_index):
@@ -680,6 +867,8 @@ def draw_game_screen(
             cols,
             blocked_cell,
             blocked_until,
+            hinted_cell,
+            hint_until,
             flying_arrow,
         )
     else:
@@ -693,7 +882,14 @@ def draw_game_screen(
             len(board) * cell_size + 24,
         )
         draw_panel(screen, board_rect, (39, 47, 75), 18)
-        draw_board(screen, board, blocked_cell, blocked_until)
+        draw_board(
+            screen,
+            board,
+            blocked_cell,
+            blocked_until,
+            hinted_cell,
+            hint_until,
+        )
 
         if flying_arrow is not None:
             draw_arrow(
@@ -703,7 +899,16 @@ def draw_game_screen(
                 ARROW_COLOR,
             )
 
-    message_rect = pygame.Rect(180, 663, 400, 58)
+    draw_ai_solve_button(
+        screen,
+        ai_solve_button,
+        fonts,
+        mouse_pos,
+        ai_solving,
+    )
+    draw_hint_button(screen, hint_button, fonts, mouse_pos)
+
+    message_rect = pygame.Rect(292, 663, 426, 58)
     pygame.draw.rect(screen, (40, 48, 77), message_rect, border_radius=15)
     draw_text(
         screen,
@@ -731,6 +936,8 @@ def draw_result_screen(
     mouse_pos,
     success,
     level_index,
+    score,
+    failure_reason,
     primary_button,
     home_button,
 ):
@@ -764,7 +971,7 @@ def draw_result_screen(
     subtitle = (
         f"第 {level_index + 1} 关已全部清空"
         if success
-        else "失误机会已经用完，再试一次吧"
+        else failure_reason
     )
     draw_text(
         screen,
@@ -772,6 +979,18 @@ def draw_result_screen(
         title,
         (WINDOW_WIDTH // 2, 350),
         TEXT_COLOR,
+        center=True,
+    )
+
+    score_rect = pygame.Rect(285, 425, 190, 42)
+    pygame.draw.rect(screen, (38, 47, 75), score_rect, border_radius=12)
+    pygame.draw.rect(screen, (77, 91, 130), score_rect, 2, border_radius=12)
+    draw_text(
+        screen,
+        fonts["small"],
+        f"本关得分  {score}",
+        score_rect.center,
+        ACCENT_YELLOW,
         center=True,
     )
     draw_text(

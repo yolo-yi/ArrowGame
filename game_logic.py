@@ -33,6 +33,15 @@ def can_fly_out(board, row, col):
     return True
 
 
+def find_flyable_grid_arrow(board):
+    """返回当前网格中下一支可以安全飞出的箭头坐标。"""
+    for row, cells in enumerate(board):
+        for col, arrow in enumerate(cells):
+            if arrow != EMPTY and can_fly_out(board, row, col):
+                return row, col
+    return None
+
+
 def get_board_layout(rows, cols):
     """根据网格规模计算居中的棋盘位置与格子尺寸。"""
     cell_size = min(MAX_CELL_SIZE, BOARD_AREA_SIZE // max(rows, cols))
@@ -117,6 +126,14 @@ def can_polyline_fly_out(arrows, arrow_index, rows, cols):
         point = point[0] + dr, point[1] + dc
 
     return True
+
+
+def find_flyable_polyline_arrow(arrows, rows, cols):
+    """返回当前折线关卡中下一支可以安全飞出的箭头索引。"""
+    for arrow_index in range(len(arrows)):
+        if can_polyline_fly_out(arrows, arrow_index, rows, cols):
+            return arrow_index
+    return None
 
 
 def get_polyline_arrow_from_mouse(arrows, mouse_pos, rows, cols):
