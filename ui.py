@@ -1,6 +1,8 @@
 """Pygame界面的所有绘制函数。"""
 
 import math
+from functools import lru_cache
+from pathlib import Path
 
 import pygame
 
@@ -592,87 +594,148 @@ def draw_settings_menu(
     )
 
 
+def draw_stroked_text(screen, font, text, position, color, stroke_color):
+    """绘制适合卡通标题的双层描边文字。"""
+    image = font.render(text, True, color)
+    outline = font.render(text, True, stroke_color)
+    for dx, dy in (
+        (-4, 0),
+        (4, 0),
+        (0, -4),
+        (0, 4),
+        (-3, -3),
+        (3, -3),
+        (-3, 3),
+        (3, 3),
+    ):
+        screen.blit(outline, (position[0] + dx, position[1] + dy))
+    screen.blit(image, position)
+
+
+@lru_cache(maxsize=1)
+def load_start_artwork():
+    """保留透明通道，裁去透明留白后缓存适合首页的角色。"""
+    path = Path(__file__).resolve().parent / "assets" / "start_mascot.png"
+    original = pygame.image.load(str(path)).convert_alpha()
+    original = original.subsurface(original.get_bounding_rect()).copy()
+    width = 340
+    height = round(original.get_height() * width / original.get_width())
+    return pygame.transform.smoothscale(original, (width, height))
+
+
+def draw_start_mascot(screen, time_seconds):
+    """按时间驱动透明角色浮动、轻微摇摆和呼吸缩放。"""
+    artwork = load_start_artwork()
+    bob = math.sin(time_seconds * 2.2) * 10
+    angle = math.sin(time_seconds * 1.5) * 4
+    scale = 1 + math.sin(time_seconds * 2.2) * 0.025
+    animated = pygame.transform.rotozoom(artwork, angle, scale)
+    rect = animated.get_rect(center=(WINDOW_WIDTH // 2, round(345 + bob)))
+    screen.blit(animated, rect)
+
+
+def draw_start_action_button(screen, rect, fonts, mouse_pos, primary):
+    """绘制参考图风格的蓝色播放按钮。"""
+    hovered = rect.collidepoint(mouse_pos)
+    if primary:
+        fill = (82, 162, 242) if hovered else (66, 145, 230)
+        border = (35, 92, 167)
+        text_color = (255, 255, 255)
+        label = "开始游戏"
+    else:
+        fill = (235, 251, 252) if hovered else (220, 245, 248)
+        border = (76, 156, 194)
+        text_color = (36, 105, 153)
+        label = "选择关卡"
+
+    pygame.draw.rect(screen, (36, 91, 145), rect.move(0, 7), border_radius=14)
+    pygame.draw.rect(screen, fill, rect, border_radius=14)
+    pygame.draw.rect(screen, border, rect, 3, border_radius=14)
+    if primary:
+        cx, cy = rect.x + 34, rect.centery
+        pygame.draw.polygon(
+            screen,
+            (255, 255, 255),
+            [(cx - 8, cy - 12), (cx - 8, cy + 12), (cx + 12, cy)],
+        )
+        text_center = (rect.centerx + 12, rect.centery)
+    else:
+        text_center = rect.center
+    draw_text(screen, fonts["button"], label, text_center, text_color, center=True)
+
+
 def draw_start_screen(
     screen, fonts, mouse_pos, start_button, level_select_button
 ):
-    """绘制游戏开始界面。"""
+    """绘制浅蓝色卡通风格的游戏开始界面。"""
     time_seconds = pygame.time.get_ticks() / 1000
+    screen.fill((211, 244, 247))
 
-    glow = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
-    pygame.draw.circle(glow, (91, 214, 190, 22), (130, 120), 150)
-    pygame.draw.circle(glow, (111, 145, 255, 20), (650, 620), 190)
-    screen.blit(glow, (0, 0))
+    # 平铺淡色箭头纹理，让背景接近参考图但保持文字清晰。
+    pattern = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+    for row, y in enumerate(range(25, WINDOW_HEIGHT, 72)):
+        for col, x in enumerate(range(28, WINDOW_WIDTH, 72)):
+            points = [
+                (x, y - 13),
+                (x - 12, y + 1),
+                (x - 5, y + 1),
+                (x - 5, y + 15),
+                (x + 5, y + 15),
+                (x + 5, y + 1),
+                (x + 12, y + 1),
+            ]
+            pygame.draw.polygon(pattern, (76, 185, 202, 18), points)
+    screen.blit(pattern, (0, 0))
 
-    decorations = [
-        ((100, 190), ">", ACCENT_BLUE, 0.0),
-        ((660, 165), "v", ARROW_COLOR, 1.2),
-        ((115, 590), "^", ACCENT_YELLOW, 2.4),
-        ((650, 555), "<", BLOCKED_COLOR, 3.5),
-    ]
-    for (x, y), direction, color, phase in decorations:
-        float_y = round(math.sin(time_seconds * 1.8 + phase) * 8)
-        draw_arrow(screen, (x, y + float_y), direction, color)
-
-    card = pygame.Rect(145, 115, 470, 530)
-    draw_panel(screen, card, (45, 53, 84), 30)
-    pygame.draw.rect(screen, (74, 88, 127), card, 2, border_radius=30)
-
-    icon_center = (WINDOW_WIDTH // 2, 195)
-    pygame.draw.circle(screen, (36, 72, 80), icon_center, 55)
-    pygame.draw.circle(screen, ARROW_COLOR, icon_center, 55, 3)
-    draw_arrow(screen, icon_center, ">", ARROW_COLOR)
-
-    draw_text(
-        screen,
-        fonts["title"],
-        "一箭又一箭",
-        (WINDOW_WIDTH // 2 + 3, 307),
-        (19, 24, 46),
-        center=True,
+    title_segments = (
+        ("一箭", (255, 181, 58)),
+        ("又", (74, 154, 235)),
+        ("一箭", (73, 192, 133)),
     )
-    draw_text(
+    widths = [fonts["title"].size(text)[0] for text, _ in title_segments]
+    title_x = (WINDOW_WIDTH - sum(widths)) // 2
+    for (text, color), width in zip(title_segments, widths):
+        draw_stroked_text(
+            screen,
+            fonts["title"],
+            text,
+            (title_x, 92),
+            color,
+            (50, 79, 91),
+        )
+        title_x += width
+
+    pygame.draw.line(screen, (244, 111, 105), (92, 132), (185, 132), 12)
+    pygame.draw.polygon(
         screen,
-        fonts["title"],
-        "一箭又一箭",
-        (WINDOW_WIDTH // 2, 303),
-        TEXT_COLOR,
-        center=True,
+        (244, 111, 105),
+        [(185, 120), (208, 132), (185, 144)],
     )
-    draw_text(
+    pygame.draw.line(screen, (72, 160, 231), (575, 132), (668, 132), 12)
+    pygame.draw.polygon(
         screen,
-        fonts["subtitle"],
-        "观察方向 · 找准顺序 · 清空棋盘",
-        (WINDOW_WIDTH // 2, 365),
-        SUBTEXT_COLOR,
-        center=True,
+        (72, 160, 231),
+        [(575, 120), (552, 132), (575, 144)],
     )
 
-    rule_rect = pygame.Rect(205, 405, 350, 64)
-    pygame.draw.rect(screen, (38, 46, 74), rule_rect, border_radius=14)
     draw_text(
         screen,
         fonts["small"],
-        "前方没有阻挡的箭头才能飞出",
-        rule_rect.center,
-        (206, 216, 239),
+        "观察方向 · 找准顺序 · 清空棋盘",
+        (WINDOW_WIDTH // 2, 184),
+        (54, 115, 137),
         center=True,
     )
+    draw_start_mascot(screen, time_seconds)
 
-    draw_button(screen, start_button, "开始游戏", fonts["button"], mouse_pos)
-    draw_button(
-        screen,
-        level_select_button,
-        "选择关卡",
-        fonts["button"],
-        mouse_pos,
-        primary=False,
-    )
+    draw_start_action_button(screen, start_button, fonts, mouse_pos, True)
+    draw_start_action_button(screen, level_select_button, fonts, mouse_pos, False)
     draw_text(
         screen,
         fonts["tiny"],
-        "鼠标点击箭头进行操作",
-        (WINDOW_WIDTH // 2, 625),
-        (135, 149, 185),
+        "点击箭头，让它沿正确方向飞出去吧！",
+        (WINDOW_WIDTH // 2, 690),
+        (66, 126, 145),
         center=True,
     )
 

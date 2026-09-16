@@ -86,8 +86,8 @@ def main():
     time_left = float(LEVEL_TIME_LIMITS[level_index])
     failure_reason = "失误机会已经用完，再试一次吧"
 
-    start_button = pygame.Rect(245, 480, 270, 58)
-    level_select_button = pygame.Rect(245, 552, 270, 54)
+    start_button = pygame.Rect(230, 510, 300, 64)
+    level_select_button = pygame.Rect(245, 590, 270, 54)
     # 基础关卡使用上方三列；挑战关卡在下方居中排列。
     level_buttons = [
         pygame.Rect(
