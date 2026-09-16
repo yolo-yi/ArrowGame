@@ -76,9 +76,9 @@ def main():
     level_select_button = pygame.Rect(245, 552, 270, 54)
     level_buttons = [
         pygame.Rect(
-            105 + (index % 2) * 300,
-            230 + (index // 2) * 170,
-            250,
+            90 + (index % 3) * 200,
+            230 + (index // 3) * 170,
+            185,
             145,
         )
         for index in range(len(LEVELS))

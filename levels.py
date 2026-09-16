@@ -1,5 +1,6 @@
 # levels.py
 from level4_data import ARROWS as LEVEL4_ARROWS
+from level5_data import ARROWS as LEVEL5_ARROWS
 
 EMPTY = "."
 
@@ -35,6 +36,13 @@ LEVELS = [
         "rows": 24,
         "cols": 16,
         "arrows": LEVEL4_ARROWS,
+    },
+    # 第5关：更大的28×18高难度折线关卡
+    {
+        "type": "polyline",
+        "rows": 28,
+        "cols": 18,
+        "arrows": LEVEL5_ARROWS,
     },
 ]
 
